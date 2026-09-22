@@ -1,0 +1,186 @@
+diff -ur cbb-0.8.1-orig/Makefile.in cbb-0.8.1/Makefile.in
+--- cbb-0.8.1-orig/Makefile.in	2000-01-06 11:15:50
++++ cbb-0.8.1/Makefile.in	2026-09-22 14:27:47
+@@ -1,4 +1,4 @@
+-# Makefile.in generated automatically by automake 1.4 from Makefile.am
++# Makefile.in generated automatically by automake 1.4-p4 from Makefile.am
+ 
+ # Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
+ # This Makefile.in is free software; the Free Software Foundation
+@@ -84,16 +84,16 @@
+ all: all-redirect
+ .SUFFIXES:
+ $(srcdir)/Makefile.in: Makefile.am $(top_srcdir)/configure.in $(ACLOCAL_M4) 
+-	cd $(top_srcdir) && $(AUTOMAKE) --gnu --include-deps Makefile
++	cd $(top_srcdir) && $(AUTOMAKE) --gnu Makefile
+ 
+-Makefile: $(srcdir)/Makefile.in  $(top_builddir)/config.status
++Makefile: $(srcdir)/Makefile.in  $(top_builddir)/config.status $(BUILT_SOURCES)
+ 	cd $(top_builddir) \
+ 	  && CONFIG_FILES=$@ CONFIG_HEADERS= $(SHELL) ./config.status
+ 
+ $(ACLOCAL_M4):  configure.in 
+ 	cd $(srcdir) && $(ACLOCAL)
+ 
+-config.status: $(srcdir)/configure $(CONFIG_STATUS_DEPENDENCIES)
++config.status: $(srcdir)/configure.in $(CONFIG_STATUS_DEPENDENCIES)
+ 	$(SHELL) ./config.status --recheck
+ $(srcdir)/configure: $(srcdir)/configure.in $(ACLOCAL_M4) $(CONFIGURE_DEPENDENCIES)
+ 	cd $(srcdir) && $(AUTOCONF)
+@@ -229,10 +229,15 @@
+ 	-rm -rf $(distdir)
+ 	mkdir $(distdir)
+ 	-chmod 777 $(distdir)
++	here=`cd $(top_builddir) && pwd`; \
++	top_distdir=`cd $(distdir) && pwd`; \
++	distdir=`cd $(distdir) && pwd`; \
++	cd $(top_srcdir) \
++	  && $(AUTOMAKE) --include-deps --build-dir=$$here --srcdir-name=$(top_srcdir) --output-dir=$$top_distdir --gnu Makefile
+ 	@for file in $(DISTFILES); do \
+ 	  d=$(srcdir); \
+ 	  if test -d $$d/$$file; then \
+-	    cp -pr $$/$$file $(distdir)/$$file; \
++	    cp -pr $$d/$$file $(distdir)/$$file; \
+ 	  else \
+ 	    test -f $(distdir)/$$file \
+ 	    || ln $$d/$$file $(distdir)/$$file 2> /dev/null \
+diff -ur cbb-0.8.1-orig/aclocal.m4 cbb-0.8.1/aclocal.m4
+--- cbb-0.8.1-orig/aclocal.m4	2000-01-05 10:35:58
++++ cbb-0.8.1/aclocal.m4	2026-09-22 14:27:47
+@@ -1,4 +1,4 @@
+-dnl aclocal.m4 generated automatically by aclocal 1.4
++dnl aclocal.m4 generated automatically by aclocal 1.4-p4
+ 
+ dnl Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
+ dnl This file is free software; the Free Software Foundation
+diff -ur cbb-0.8.1-orig/bindings.tcl cbb-0.8.1/bindings.tcl
+--- cbb-0.8.1-orig/bindings.tcl	2000-01-03 08:08:02
++++ cbb-0.8.1/bindings.tcl	2026-09-22 14:38:49
+@@ -23,7 +23,57 @@
+ #
+ # $Id: bindings.tcl,v 1.2 2000/01/02 19:08:02 curt Exp $
+ 
++#---------------------------------------------------------------------------
++# Additional implementations from Marco A. P. Cabral
++# http://www.dma.im.ufrj.br/~mcabral/cbb.html
++#---------------------------------------------------------------------------
+ 
++# tkEntrySetCursor -
++# Move the insertion cursor to a given position in an entry.  Also
++# clears the selection, if there is one in the entry, and makes sure
++# that the insertion cursor is visible.
++# Arguments:
++# w -           The entry window.
++# pos -         The desired new position for the cursor in the window.
++
++proc tkEntrySetCursor {w pos} {
++    $w icursor $pos
++    $w selection clear
++    tkEntrySeeInsert $w
++}
++# Make sure that the insertion cursor is visible in the entry window.
++# If not, adjust the view so that it is.
++#
++# Arguments:
++# w -           The entry window.
++proc tkEntrySeeInsert w {
++    set c [$w index insert]
++    if {($c < [$w index @0]) || ($c > [$w index @[winfo width $w]])} {
++        $w xview $c
++    }
++}
++
++# ######################################
++# Second option for this procedure.
++# I think (and hope) both do the same thing.
++#
++#proc tkEntrySeeInsert w {
++#    set c [$w index insert]
++#    set left [$w index @0]
++#    if {$left > $c} {
++#        $w xview $c
++#        return
++#    }
++#    set x [winfo width $w]
++#    while {([$w index @$x] <= $c) && ($left < $c)} {
++#        incr left
++#        $w xview $left
++#    }
++#}
++#---------------------------------------------------------------------------
++# ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^ ^^^^^
++#---------------------------------------------------------------------------
++
+ #------------------------------------------------------------------------------
+ # Setup auto highlighting of entry fields
+ #------------------------------------------------------------------------------
+@@ -280,18 +330,14 @@
+ 	# only check for Feb.  ~ 4 times a month.
+         if {$month == 2} {
+ 	    # it is Feb.
+-            # if { { {expr $year fmod 4} == 0} || 
+-	    #      { {expr $year fmod 4} == 4} } {
+-		# is leap year, or ends in 00
+-		# if {$day == 29} {
+-		    #first time through
+-                    # nop
+-		# } else {
+-		    # Feb over 29 days?
+-                    set day 1
+-                    set month 3
+-		# }
+-	    # }
++	    if { [expr ! (    ($year % 4)  ==0 \
++		           && (   ($year % 100)!=0 \
++		               || ($year % 400)==0) \
++		           && $day==29)] } {
++		# Leap year and day
++		set day 1
++		set month 3
++	    }
+         } elseif {$day > 30} {
+             if {$month == 4 || $month == 6 || $month == 9 || $month == 11} {
+                 set day 1
+@@ -344,9 +390,14 @@
+ 
+     if {$day < 1} {
+         if {$month == 3} {
+-            set day 28
+-            # get the leap year stuff to 
+-            # go in here.
++	    if { [expr    ($year % 4)  ==0 \
++		       && (   ($year % 100)!=0 \
++		           || ($year % 400)==0) ] } {
++	        # Leap year and day
++		set day 29
++            } else {
++		set day 28
++	    }
+         } elseif {$month == 5 || $month == 7 || $month == 10 || $month == 12} {
+             set day 30
+         } elseif { $month == 1 || $month == 2 || $month == 4 || $month == 6 \
+Only in cbb-0.8.1: cbb
+diff -ur cbb-0.8.1-orig/cbb.in cbb-0.8.1/cbb.in
+--- cbb-0.8.1-orig/cbb.in	1999-12-18 15:04:50
++++ cbb-0.8.1/cbb.in	2026-09-22 14:33:35
+@@ -1,4 +1,4 @@
+-#!/usr/bin/wish8.0 -f
++#!@WISH@ -f
+ #
+ #  'CBB' -- Check Book Balancer
+ #           Front end to the perl engine.
+diff -ur cbb-0.8.1-orig/contrib/importcat.pl cbb-0.8.1/contrib/importcat.pl
+--- cbb-0.8.1-orig/contrib/importcat.pl	1999-12-18 15:06:02
++++ cbb-0.8.1/contrib/importcat.pl	2026-09-22 14:27:47
+@@ -17,9 +17,9 @@
+ #
+ # v.0.1 9/22/96
+ 
+-
++package CBB;
+ # specify the installed location of the necessary pieces.
+-$cbb_incl_dir = "..";
++$cbb_incl_dir = "/usr/X11R6/lib/X11/cbb";
+ unshift(@INC, $cbb_incl_dir);
+ 
+ require "common.pl";
